@@ -214,4 +214,5 @@ go run client/kvclient.go
 ```
 
 Client端运行如下：
-![img.png](img/img.png)
+![img.png](img/img.png)#   R a f t - k v  
+ 
