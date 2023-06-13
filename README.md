@@ -1,46 +1,39 @@
-# 介绍
-
+介绍
 本项目实现了一个基于Raft算法的KV数据库，参考资料是MIT6.824分布式系统的课程，我在看了MIT6.824关于Raft算法的几个章节以及Raft算法的论文之后实现的一个项目。
 
-Raft论文：[In Search of an Understandable Consensus Algorithm(Extended Version)](https://raft.github.io/raft.pdf)
+Raft论文：In Search of an Understandable Consensus Algorithm(Extended Version)
 
 部分代码参考了一些别的实现。
 
-其中主要的难点就是对Raft算法的理解，以及实现中的一些细节，对我来说最难的就是并发的一些东西。就是**设计好哪些地方该加锁，哪些地方不该加锁，即如何在保证并发数据正确的情况下，保证并发的性能**。
+其中主要的难点就是对Raft算法的理解，以及实现中的一些细节，对我来说最难的就是并发的一些东西。就是设计好哪些地方该加锁，哪些地方不该加锁，即如何在保证并发数据正确的情况下，保证并发的性能。
 
-## 主要模块
-
+主要模块
 项目代码主要分为几个模块：
 
-- rpcutil: 用于实现RPC通信的一些接口, 封装了go的net库提供的RPC通信框架。
-- raft: Raft协议实现的主体部分, 主要实现了Raft协议中的leader选举和日志复制功能。
-- kvdb: 基于raft协议实现的一个kv数据库，用到了raft模块的东西。
-
+rpcutil: 用于实现RPC通信的一些接口, 封装了go的net库提供的RPC通信框架。
+raft: Raft协议实现的主体部分, 主要实现了Raft协议中的leader选举和日志复制功能。
+kvdb: 基于raft协议实现的一个kv数据库，用到了raft模块的东西。
 下面详细介绍这几个模块：
 
-- rpcutil模块
-
+rpcutil模块
 rpcutil包含一个rpc.go文件，封装了RPC通信的一些接口，主要是一个结构体：
-```go
+
 type ClientEnd struct {
 Addr   string
 // 与对端通信的rpc工具
 Client *rpc.Client
 }
-```
-为上述结构体实现了*Call*方法和*TryConnect*方法：
-```go
+为上述结构体实现了Call方法和TryConnect方法：
+
 // 调用这个函数来进行RPC通信
 func (e *ClientEnd) Call(methodName string, args interface{}, reply interface{}) bool
 // 获取一个Client通信实例
 func TryConnect(address string) *rpc.Client
-```
 在Raft实现的时候，会用到这个文件里的一些接口。
 
-- raft模块
-
+raft模块
 raft协议实现的主体部分, 每个Raft节点维护的数据结构如下：
-```go
+
 type Raft struct {
 	mu        sync.Mutex           // 互斥锁，用于共享变量的同步
 	peers     []*rpcutil.ClientEnd // 服务器列表, 用来进行RPC通信的(ClientEnd实现参见package rpcutil)
@@ -67,9 +60,8 @@ type Raft struct {
 	doAppendCh   chan int	// 用于AppendEntries的管道(用于heartbeat或者是appendEntries)
 	applyCmdLogs map[interface{}]*CommandState	// 用于保存命令的字典
 }
-```
 代码里的函数和其对应的主要作用如下：
-```go
+
 // 返回当前服务器状态（当前任期号以及当前服务器是否是leader）
 func (rf *Raft) GetState() (int, bool)
 
@@ -116,19 +108,14 @@ func MakeRaft(peers []*rpcutil.ClientEnd, me int, persister *Persister, applyCh 
 
 // leader选举函数
 func (rf *Raft) leaderElection(wonCh chan int, wgp *sync.WaitGroup)
-```
 具体的函数调用关系如下：
-```go
+
 MakeRaft函数生成一个Raft节点实例，同时里面开启两个协程不断循环进行leader选举(即调用leaderElection)以及日志复制(即调用sendLogEntry)
 sendLogEntry(将日志复制到所有follower) -> sendAppendEntries -> Call(AppendEntries)(进行RPC通信)
 leaderElection -> sendRequestVote -> Call(RequestVote)(进行RPC通信来做leader选举)
-```
+kvdb模块
+kvdb模块主要基于raft模块实现了一个分布式的kv数据库。 Server的主要结构体如下：
 
-- kvdb模块
-
-kvdb模块主要基于raft模块实现了一个分布式的kv数据库。
-Server的主要结构体如下：
-```go
 type KVServer struct {
 	mu      sync.Mutex
 	me      int	// 当前节点的索引号
@@ -141,11 +128,10 @@ type KVServer struct {
 	data          map[string]string	// 存储的数据
 	commonReplies []*CommonReply	// 命令执行的返回值
 }
-```
 每一个服务器包含一个Raft节点。
 
 KVServer模块主要提供了用来进行RPC通信的接口，Get和PutAppend，用来查询和添加数据, 以及一个执行Apply命令的函数：
-```go
+
 // Get接口, 供Client进行RPC调用
 func (kv *KVServer) Get(args *GetArgs, reply *GetReply) error
 
@@ -160,17 +146,13 @@ func StartKVServer(servers []*rpcutil.ClientEnd, me int, persister *raft.Persist
 
 // 这个函数不断循环从applyCh通道中读取Apply到数据库的命令，并执行具体的命令
 func (kv *KVServer) opHandler()
-```
-
 函数调用关系如下：
-```go
+
 Get和PutAppend函数是供客户端进行RPC远程调用的
 Get and PutAppend -> findReply
 StartKVServer -> opHandler
-```
-
 Client的主要结构如下：
-```go
+
 // 客户端维护的一些数据
 type Clerk struct {
 	//
@@ -179,9 +161,8 @@ type Clerk struct {
 	servlen int
 	leader  int
 }
-```
-*client.go*主要实现了以下函数：
-```go
+client.go主要实现了以下函数：
+
 // 获取具体的客户端实例
 func MakeClerk(servers []*rpcutil.ClientEnd) *Clerk
 
@@ -193,26 +174,14 @@ func (ck *Clerk) putAppend(key string, value string, op string)
 
 // 获取客户端通信实例
 func GetClientEnds(path string) []*rpcutil.ClientEnd
-```
-
-## 具体用法
-
-- 启动server
-
+具体用法
+启动server
 下面启动包含三个节点的Raft集群，配置文件见，example/config/server1.yml，可根据自己需求更改。
-```shell
+
 cd .../raft-kv
 go run server/kvserver.go example/config/server1.yml
 go run server/kvserver.go example/config/server2.yml
 go run server/kvserver.go example/config/server3.yml
-```
-
-- 启动client
-
-```shell
+启动client
 go run client/kvclient.go
-```
-
-Client端运行如下：
-![img.png](img/img.png)#   R a f t - k v  
- 
+Client端运行如下： imgpng# Raft-kv
